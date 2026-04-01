@@ -1,0 +1,10 @@
+Create a production-ready FastAPI backend.
+
+Requirements:
+- Modular structure (api, services, models, db, core)
+- PostgreSQL connection using SQLAlchemy
+- Environment config using pydantic BaseSettings
+- Basic health check endpoint
+- Proper logging
+
+Keep code clean, scalable, and well-structured.

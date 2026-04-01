@@ -1,0 +1,6 @@
+Update the health endpoint to include a database connectivity check.
+
+- Use SQLAlchemy session
+- Execute a simple query (SELECT 1)
+- Return db_status: "connected" or "failed"
+- Handle exceptions properly
