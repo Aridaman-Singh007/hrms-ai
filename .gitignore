@@ -21,3 +21,17 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Parser evaluation / local test artifacts
+outputs/
+
+# Real resume samples (PII) — keep directory via .gitkeep
+sample_resumes/*
+!sample_resumes/.gitkeep
+
+# Temp uploads from file_handler
+hrms-ai/
+
+# Or on Windows temp path pattern - file_handler uses system temp:
+# Already under system temp, but if you add a local uploads folder:
+backend/uploads/
