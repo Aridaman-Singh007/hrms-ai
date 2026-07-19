@@ -50,6 +50,8 @@ class Education(BaseModel):
     end_year: int | None = None
 
     cgpa: float | None = None
+    percentage: float | None = None
+    grade: str | None = None
 
 
 class Project(BaseModel):

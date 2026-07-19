@@ -5,15 +5,25 @@ Run from the repository root:
 
     python scripts/evaluate_resume_parser.py
 
+Re-run only previously failed resumes (saves LLM tokens):
+
+    python scripts/evaluate_resume_parser.py --only-failed
+
+Re-run specific files by name or stem:
+
+    python scripts/evaluate_resume_parser.py anish_SDE1_resume.pdf "Snesh's_Resume.pdf"
+
 Or from backend (paths resolve to repo root):
 
-    python ../scripts/evaluate_resume_parser.py
+    python ../scripts/evaluate_resume_parser.py --only-failed
 
-Requires ``GEMINI_API_KEY`` in ``backend/.env`` and sample files in ``sample_resumes/``.
+Requires LLM credentials in ``backend/.env`` (Gemini or Bedrock via
+``LLM_PROVIDER``) and sample files in ``sample_resumes/``.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -49,11 +59,14 @@ from app.parser.llm.resume_parser import (  # noqa: E402
     _sanitize_payload,
     _validate_candidate_profile,
 )
+from app.parser.normalizers.resume import ResumeNormalizer  # noqa: E402
 from app.parser.normalizers.skills import normalize_skills  # noqa: E402
 from app.parser.pipeline import extract_resume_text  # noqa: E402
 from app.schemas.resume import CandidateProfile  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+_RESUME_NORMALIZER = ResumeNormalizer()
 
 SAMPLE_RESUMES_DIR = _REPO_ROOT / "sample_resumes"
 OUTPUTS_DIR = _REPO_ROOT / "outputs"
@@ -102,8 +115,17 @@ def _ensure_output_dirs() -> None:
         logger.debug("Ensured output directory: %s", directory)
 
 
-def _discover_resumes() -> list[Path]:
-    """Return supported resume files from ``sample_resumes/``."""
+def _discover_resumes(
+    *,
+    only_failed: bool = False,
+    names: list[str] | None = None,
+) -> list[Path]:
+    """Return supported resume files from ``sample_resumes/``.
+
+    Args:
+        only_failed: If True, restrict to stems present under ``outputs/failed/``.
+        names: Optional filenames or stems to include (case-insensitive match).
+    """
     if not SAMPLE_RESUMES_DIR.exists():
         logger.warning("Sample resumes directory does not exist: %s", SAMPLE_RESUMES_DIR)
         return []
@@ -113,8 +135,47 @@ def _discover_resumes() -> list[Path]:
         for path in SAMPLE_RESUMES_DIR.iterdir()
         if path.is_file() and path.suffix.lower() in _SUPPORTED_SUFFIXES
     )
-    logger.info("Found %d resume(s) in %s", len(files), SAMPLE_RESUMES_DIR)
+
+    if only_failed:
+        failed_stems = {
+            path.stem
+            for path in FAILED_DIR.glob("*.json")
+            if path.is_file()
+        }
+        if not failed_stems:
+            logger.warning("No failed resume records found in %s", FAILED_DIR)
+            return []
+        files = [path for path in files if path.stem in failed_stems]
+        logger.info("Filtered to %d previously failed resume(s)", len(files))
+
+    if names:
+        wanted = {name.strip().lower() for name in names if name.strip()}
+        files = [
+            path
+            for path in files
+            if path.name.lower() in wanted or path.stem.lower() in wanted
+        ]
+        logger.info("Filtered to %d resume(s) matching name args", len(files))
+
+    logger.info("Selected %d resume(s) from %s", len(files), SAMPLE_RESUMES_DIR)
     return files
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Evaluate the resume parser against sample resumes.",
+    )
+    parser.add_argument(
+        "--only-failed",
+        action="store_true",
+        help="Only re-run resumes listed under outputs/failed/.",
+    )
+    parser.add_argument(
+        "names",
+        nargs="*",
+        help="Optional resume filenames or stems to evaluate.",
+    )
+    return parser.parse_args(argv)
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -140,11 +201,12 @@ def _save_failure(stem: str, *, stage: str, error: str, detail: str | None = Non
 
 
 def _parse_llm_to_profile(raw_response: str) -> CandidateProfile:
-    """Parse raw LLM output through sanitize, skill normalize, and validate."""
+    """Parse raw LLM output through sanitize, skill normalize, validate, and enrich."""
     payload = _parse_llm_json(raw_response)
     sanitized = _sanitize_payload(payload)
     normalized = _normalize_skills_in_payload(sanitized)
-    return _validate_candidate_profile(normalized)
+    profile = _validate_candidate_profile(normalized)
+    return _RESUME_NORMALIZER.normalize(profile)
 
 
 def _profile_to_dict(profile: CandidateProfile) -> dict:
@@ -284,20 +346,37 @@ def _print_metrics_summary(metrics: EvalMetrics, results: list[ResumeEvalResult]
     print("=" * 60)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    if not settings.gemini_api_key:
-        print("FAIL: GEMINI_API_KEY is not set in backend/.env")
-        return 1
+    provider = settings.llm_provider.strip().lower() or "gemini"
+    if provider == "bedrock":
+        if not settings.aws_access_key_id or not settings.aws_secret_access_key:
+            print("FAIL: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set in backend/.env")
+            return 1
+        model_label = settings.bedrock_model_id
+    else:
+        if not settings.gemini_api_key:
+            print("FAIL: GEMINI_API_KEY is not set in backend/.env")
+            return 1
+        model_label = settings.gemini_model
 
     _ensure_output_dirs()
-    resume_files = _discover_resumes()
+    resume_files = _discover_resumes(
+        only_failed=args.only_failed,
+        names=args.names or None,
+    )
 
     if not resume_files:
-        print(f"No resumes found in {SAMPLE_RESUMES_DIR}")
-        print(f"Add .pdf or .docx files and re-run.")
+        if args.only_failed:
+            print(f"No matching failed resumes found under {FAILED_DIR}")
+        elif args.names:
+            print(f"No resumes matched: {', '.join(args.names)}")
+        else:
+            print(f"No resumes found in {SAMPLE_RESUMES_DIR}")
+            print("Add .pdf or .docx files and re-run.")
         return 1
 
     print("=" * 60)
@@ -305,7 +384,13 @@ def main() -> int:
     print("=" * 60)
     print(f"Samples:  {SAMPLE_RESUMES_DIR}")
     print(f"Outputs:  {OUTPUTS_DIR}")
-    print(f"Model:    {settings.gemini_model}")
+    print(f"Provider: {provider}")
+    print(f"Model:    {model_label}")
+    if args.only_failed:
+        print("Filter:   only previously failed")
+    if args.names:
+        print(f"Names:    {', '.join(args.names)}")
+    print(f"Selected: {len(resume_files)} resume(s)")
     print()
 
     metrics = EvalMetrics(total=len(resume_files))
@@ -318,6 +403,11 @@ def main() -> int:
 
         if result.success:
             metrics.succeeded += 1
+            # Clear stale failure record if this run succeeded.
+            stale_failure = FAILED_DIR / f"{resume_path.stem}.json"
+            if stale_failure.exists():
+                stale_failure.unlink()
+                logger.info("Removed stale failure record: %s", stale_failure.name)
         else:
             metrics.failed += 1
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from pydantic import EmailStr, TypeAdapter, ValidationError as PydanticValidationError
@@ -14,9 +15,12 @@ from app.parser.llm.prompts import (
     build_resume_parser_prompt,
 )
 from app.parser.llm.utils import safe_json_loads
+from app.parser.normalizers.resume import ResumeNormalizer
 from app.parser.normalizers.skills import normalize_skill
 from app.parser.normalizers.taxonomy import get_skill_category
 from app.schemas.resume import CandidateProfile
+
+_resume_normalizer = ResumeNormalizer()
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,16 @@ _NESTED_LIST_FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "education": frozenset(
-        {"degree", "specialization", "institution", "start_year", "end_year", "cgpa"}
+        {
+            "degree",
+            "specialization",
+            "institution",
+            "start_year",
+            "end_year",
+            "cgpa",
+            "percentage",
+            "grade",
+        }
     ),
     "projects": frozenset(
         {
@@ -115,6 +128,7 @@ def parse_resume_with_llm(resume_text: str) -> CandidateProfile:
     normalized = _normalize_skills_in_payload(sanitized)
 
     profile = _validate_candidate_profile(normalized)
+    profile = _resume_normalizer.normalize(profile)
 
     logger.info(
         "Resume parsed successfully (skills=%d, experience=%d, education=%d)",
@@ -223,6 +237,14 @@ def _sanitize_nested_object(
         value = item.get(key)
         if key in _STRING_NESTED_LIST_FIELDS:
             cleaned[key] = _sanitize_string_list(value, f"{parent_field}.{key}")
+        elif key in {"start_year", "end_year"}:
+            cleaned[key] = _coerce_year(value)
+        elif key == "grade":
+            cleaned[key] = _coerce_optional_string(value)
+        elif key in {"cgpa", "percentage", "years_experience"}:
+            cleaned[key] = _coerce_optional_float(value)
+        elif key == "duration_months":
+            cleaned[key] = _coerce_optional_int(value)
         else:
             cleaned[key] = _null_if_blank(value)
 
@@ -267,6 +289,123 @@ def _null_if_blank(value: Any) -> Any:
     if isinstance(value, str) and not value.strip():
         return None
     return value
+
+
+_NON_YEAR_TOKENS = frozenset(
+    {
+        "present",
+        "current",
+        "currently",
+        "now",
+        "ongoing",
+        "expected",
+        "till date",
+        "to date",
+        "na",
+        "n/a",
+    }
+)
+
+
+def _coerce_year(value: Any) -> int | None:
+    """Coerce LLM education year values into an int year or None.
+
+    Accepts ints, numeric strings, and human-readable dates such as
+    ``"Nov 2022"``, ``"11/2021"``, or ``"May 2026 (Expected)"``.
+    Tokens like ``Present`` / ``Expected`` alone become ``None``.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        return None
+
+    if isinstance(value, int):
+        return value if 1900 <= value <= 2100 else None
+
+    if isinstance(value, float):
+        year = int(value)
+        return year if 1900 <= year <= 2100 else None
+
+    if not isinstance(value, str):
+        value = str(value)
+
+    text = value.strip()
+    if not text:
+        return None
+
+    lowered = text.lower()
+    if lowered in _NON_YEAR_TOKENS:
+        return None
+
+    # Prefer a 4-digit year anywhere in the string.
+    match = re.search(r"\b(19|20)\d{2}\b", text)
+    if match:
+        year = int(match.group(0))
+        logger.debug("Coerced education year %r -> %d", value, year)
+        return year
+
+    # Bare integer string fallback.
+    if text.isdigit():
+        year = int(text)
+        if 1900 <= year <= 2100:
+            return year
+
+    logger.warning("Could not coerce education year from %r; using null", value)
+    return None
+
+
+def _coerce_optional_string(value: Any) -> str | None:
+    """Coerce values like grade ``10`` into ``\"10\"``."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        # Avoid "10.0" for whole numbers.
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value)
+    text = str(value).strip()
+    return text or None
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    """Coerce numeric LLM values into floats."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip().replace("%", "")
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            logger.warning("Could not coerce float from %r; using null", value)
+            return None
+    return None
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    """Coerce numeric LLM values into ints."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(float(text))
+        except ValueError:
+            logger.warning("Could not coerce int from %r; using null", value)
+            return None
+    return None
 
 
 def _sanitize_email(value: Any) -> str | None:

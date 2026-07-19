@@ -23,3 +23,8 @@ PyMuPDF==1.25.5
 uvicorn==0.42.0
 google-genai==2.6.0
 tenacity==9.1.4
+boto3==1.38.36
+numpy==2.2.6
+Pillow==11.2.1
+paddlepaddle==3.0.0
+paddleocr==2.10.0

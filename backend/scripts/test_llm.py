@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integration test for the Gemini LLM client.
+"""Integration test for the configured LLM client (Gemini or Bedrock).
 
 Run from the backend directory:
 
@@ -30,16 +30,28 @@ def main() -> int:
     from app.parser.llm.utils import safe_json_loads
 
     settings = get_settings()
-    print("=" * 60)
-    print("Gemini LLM integration test")
-    print("=" * 60)
-    print(f"Model:  {settings.gemini_model}")
-    print(f"API key set: {bool(settings.gemini_api_key)}")
-    print()
+    provider = settings.llm_provider.strip().lower() or "gemini"
 
-    if not settings.gemini_api_key:
-        print("FAIL: GEMINI_API_KEY is not set. Add it to backend/.env")
-        return 1
+    print("=" * 60)
+    print("LLM integration test")
+    print("=" * 60)
+    print(f"Provider: {provider}")
+
+    if provider == "bedrock":
+        print(f"Model:    {settings.bedrock_model_id}")
+        print(f"Region:   {settings.aws_region}")
+        print(f"AWS key set: {bool(settings.aws_access_key_id)}")
+        print()
+        if not settings.aws_access_key_id or not settings.aws_secret_access_key:
+            print("FAIL: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set in backend/.env")
+            return 1
+    else:
+        print(f"Model:    {settings.gemini_model}")
+        print(f"API key set: {bool(settings.gemini_api_key)}")
+        print()
+        if not settings.gemini_api_key:
+            print("FAIL: GEMINI_API_KEY is not set. Add it to backend/.env")
+            return 1
 
     print("System prompt:", repr(SYSTEM_PROMPT))
     print("User prompt:  ", repr(USER_PROMPT))

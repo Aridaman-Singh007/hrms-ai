@@ -42,6 +42,7 @@ GENERAL EXTRACTION RULES:
 - Preserve chronological ordering: most recent experience/education first when the resume lists them that way; otherwise follow source order.
 - Dates must remain human-readable strings as written (e.g. "Jan 2022", "2020-2023", "Present"). Do not convert to ISO unless already in that form.
 - URLs and emails must be copied exactly as they appear.
+- If an "EMBEDDED LINKS:" section is present, treat those URLs as real links from the document and assign each to the correct field: linkedin_url (linkedin.com), github_url (github.com), portfolio_url (personal site/other). Extra links may be ignored.
 - Phone numbers: copy as written; do not reformat unless clearly standardised in the source.
 - summary: only populate if an explicit summary/objective/profile section exists.
 - achievements: bullet points or honours explicitly listed; do not invent.
@@ -56,7 +57,8 @@ _SKILLS_RULES = """\
 SKILLS:
 - Extract technical and professional skills explicitly mentioned.
 - Use canonical, industry-standard names where clearly identifiable (e.g. "React" not "reactjs", "Python" not "py").
-- category: one of programming_language, frontend, backend, database, cloud, devops, ai_ml, data_engineering, testing, mobile, security, architecture — or null if unclear.
+- category: one of programming_language, frontend, backend, database, cloud, devops, ai_ml, data_engineering, testing, devtools, mobile, security, architecture — or null if unclear.
+- devtools covers IDEs/editors and developer tooling (e.g. VS Code, Jupyter Notebook, Git, GitHub, Postman, Jira, Figma).
 - years_experience: only if explicitly stated; otherwise null. Do not infer from tenure.
 - Do not duplicate the same skill; merge aliases into one entry with the canonical name.
 - Soft skills only if prominently listed as skills (not buried in prose).
@@ -79,8 +81,10 @@ _EDUCATION_RULES = """\
 EDUCATION:
 - degree and institution: exact text from the resume.
 - specialization: field of study/major if stated; else null.
-- start_year / end_year: integers only when explicit years are given; else null.
-- cgpa: only if explicitly stated with a numeric value; else null.
+- start_year / end_year: integers (YYYY) only — e.g. 2022, not "Nov 2022", "11/2021", or "Present". If only a month/year is written, extract the year. Use null for Present/current/expected when no year exists.
+- cgpa: only if a CGPA/GPA is explicitly stated on a point scale (e.g. 8.5, 3.7); else null. Do NOT convert a percentage into a CGPA.
+- percentage: only if a percentage grade is explicitly stated (e.g. "94.2%"); store the numeric value (94.2) without the % sign; else null.
+- grade: any letter/other grade string if stated (e.g. "A+", "First Class"); else null.
 - Order from most recent to oldest when discernible.
 """
 
@@ -144,6 +148,8 @@ _RESUME_JSON_SCHEMA: dict = {
             "start_year": None,
             "end_year": None,
             "cgpa": None,
+            "percentage": None,
+            "grade": None,
         }
     ],
     "projects": [

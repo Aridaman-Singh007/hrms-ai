@@ -490,6 +490,77 @@ python scripts/evaluate_resume_parser.py
 
 Requires `GEMINI_API_KEY` in `backend/.env` and resumes in `sample_resumes/`.
 
+### 2.15 Parser Quality Improvements (from evaluation feedback)
+
+Acted on findings from the first real-resume evaluation run:
+
+**Taxonomy (`normalizers/taxonomy.py`)**
+- Added new `devtools` category with: VS Code, Jupyter Notebook, PyCharm, IntelliJ IDEA, Visual Studio, Git, GitHub, GitLab, Bitbucket, Postman, Jira, Figma.
+- Fixes previously uncategorized skills like `Jupyter Notebook` and `VsCode`.
+
+**Education schema (`schemas/resume.py`)**
+- Added `percentage: float | None` and `grade: str | None` so percentage-based results are preserved instead of dropped into a null `cgpa`.
+- Prompt updated: `cgpa` only for point-scale GPA, `percentage` for percent grades (no lossy conversion), plus `devtools` in the allowed skill categories.
+
+**Deterministic normalizer (`normalizers/resume.py`)**
+- `ResumeNormalizer.normalize(profile)` now runs after schema validation.
+- Computes `duration_months` (inclusive) from `start_date`/`end_date`, using today's date for `Present`/current roles.
+- Normalizes present-tense end dates to `"Present"` and sets `currently_working`.
+- Computes `total_experience_years` from summed durations when the LLM left it null.
+- Fills known certification issuers via a deterministic map (e.g. AWS Developer Associate → Amazon Web Services) — no LLM inference.
+
+**PDF extraction (`extractors/pdf.py`)**
+- Tuned pdfplumber with `x_tolerance`/`y_tolerance` to reduce merged words.
+- Added `_merged_word_ratio()` quality heuristic; when pdfplumber output looks glued, PyMuPDF is run and the cleaner result is chosen (fixes Shipsy "mergedwords" description issue).
+
+Wired `ResumeNormalizer` into `parse_resume_with_llm` after validation. All changes verified with unit checks; no lint errors.
+
+### 2.19 OCR for Scanned / Image-Only PDFs
+
+Added OCR fallback for resumes like `Snesh's_Resume.pdf` (1 page, 1 image, 0 text chars):
+
+- New `extractors/ocr.py` with provider chain controlled by `OCR_PROVIDER`:
+  - `auto` (default): **PaddleOCR → Tesseract → Bedrock vision → Textract**
+  - `paddleocr`: local PaddleOCR (preferred cheap path)
+  - `tesseract`: optional local `pytesseract`
+  - `bedrock`: multimodal Converse OCR (expensive fallback only)
+  - `textract`: kept last for optional future use
+- PDF pages rendered to PNG via PyMuPDF (`2x` scale) before OCR.
+- `extract_text_from_pdf()` calls OCR when native text is missing/sparse.
+- Settings: `OCR_ENABLED`, `OCR_PROVIDER` (defaults `true` / `auto`).
+- Dependencies: `paddlepaddle`, `paddleocr`, `numpy`, `Pillow` (installed; models auto-download on first run).
+- Verified on `Snesh's_Resume.pdf`: PaddleOCR extracted ~3800 chars; full parse eval **SUCCESS** (Snesh Subbiah Raj).
+
+### 2.18 Education Field Sanitization
+
+Hardened LLM output sanitization after batch eval failures (4/5 failed on education field types):
+
+- `_coerce_year()`: `"Nov 2022"`, `"11/2021"`, `"May 2026 (Expected)"` → year ints; `"Present"` / `"Expected"` → `null`.
+- `_coerce_optional_string()`: numeric `grade` values like `10` → `"10"`.
+- Also coerce `cgpa` / `percentage` / `years_experience` / `duration_months` to proper numeric types.
+- Prompt updated to require YYYY integers for education years.
+
+### 2.17 AWS Bedrock LLM Provider
+
+Added Bedrock as a swappable LLM backend so Gemini quota exhaustion does not block parsing:
+
+- New `providers/bedrock.py` using boto3 **Converse API** with throttling retries.
+- `LLM_PROVIDER` setting selects `gemini` or `bedrock` in `client.py`.
+- Config: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `BEDROCK_MODEL_ID`.
+- Default Bedrock model: `amazon.nova-lite-v1:0` (region default `ap-south-1`).
+- Dependency: `boto3==1.38.36`.
+- `.env.example` updated with Bedrock placeholders.
+
+Switch with `LLM_PROVIDER=bedrock` in `backend/.env`, then run `python scripts/test_llm.py`.
+
+### 2.16 Evaluation Fixes: durations, totals, embedded links
+
+Follow-up fixes after batch-evaluating ~19 real resumes:
+
+- **Bug: normalizer bypassed in eval** — `scripts/evaluate_resume_parser.py` called the internal parse helpers directly and skipped `ResumeNormalizer`, so `duration_months` and `total_experience_years` stayed null in batch outputs (they worked via `parse_resume_with_llm`). Eval now runs `ResumeNormalizer.normalize()` after validation.
+- **Date parsing** confirmed for day-first formats like `"16 Feb 2026"` (durations computed inclusively; e.g. 5 and 4 months → 0.8 total years).
+- **Embedded PDF hyperlinks** — LinkedIn/GitHub/portfolio links are stored as PDF link annotations, not in the text stream, so they were never extracted. `extractors/pdf.py` now reads link annotations via PyMuPDF (`page.get_links()`) and appends an `EMBEDDED LINKS:` section to the extracted text. Prompt updated to route those URLs into `linkedin_url` / `github_url` / `portfolio_url`.
+
 ---
 
 ## What's Next

@@ -453,6 +453,56 @@ SKILL_TAXONOMY: dict[str, dict[str, object]] = {
         "category": "testing",
     },
 
+    # ── Dev Tools ──────────────────────────────────────────────────────
+    "VS Code": {
+        "aliases": ["vscode", "vs code", "visual studio code"],
+        "category": "devtools",
+    },
+    "Jupyter Notebook": {
+        "aliases": ["jupyter", "jupyter notebook", "jupyter notebooks", "ipynb"],
+        "category": "devtools",
+    },
+    "PyCharm": {
+        "aliases": ["pycharm"],
+        "category": "devtools",
+    },
+    "IntelliJ IDEA": {
+        "aliases": ["intellij", "intellij idea"],
+        "category": "devtools",
+    },
+    "Visual Studio": {
+        "aliases": ["visual studio"],
+        "category": "devtools",
+    },
+    "Git": {
+        "aliases": ["git"],
+        "category": "devtools",
+    },
+    "GitHub": {
+        "aliases": ["github"],
+        "category": "devtools",
+    },
+    "GitLab": {
+        "aliases": ["gitlab"],
+        "category": "devtools",
+    },
+    "Bitbucket": {
+        "aliases": ["bitbucket"],
+        "category": "devtools",
+    },
+    "Postman": {
+        "aliases": ["postman"],
+        "category": "devtools",
+    },
+    "Jira": {
+        "aliases": ["jira"],
+        "category": "devtools",
+    },
+    "Figma": {
+        "aliases": ["figma"],
+        "category": "devtools",
+    },
+
     # ── Mobile ─────────────────────────────────────────────────────────
     "React Native": {
         "aliases": ["react native"],
