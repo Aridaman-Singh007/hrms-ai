@@ -64,14 +64,11 @@ class ResumeParserService:
 
         temp_path: Path | None = None
         try:
-            temp_path = await save_temp_file(upload)
+            temp_path = await save_temp_file(
+                upload,
+                max_bytes=self._max_upload_bytes,
+            )
             file_size = temp_path.stat().st_size
-            if file_size > self._max_upload_bytes:
-                raise ValueError(
-                    f"Uploaded file exceeds maximum size of "
-                    f"{self._max_upload_bytes // (1024 * 1024)} MiB"
-                )
-
             logger.info(
                 "Parsing resume upload filename=%s size_bytes=%d temp=%s",
                 filename,

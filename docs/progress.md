@@ -515,6 +515,29 @@ Acted on findings from the first real-resume evaluation run:
 
 Wired `ResumeNormalizer` into `parse_resume_with_llm` after validation. All changes verified with unit checks; no lint errors.
 
+### 2.23 Job Description Parser (Schema + Prompt + LLM Parser)
+
+Structured JD parsing for ATS matching, mirroring the resume parser architecture:
+
+**Schema (`schemas/job_description.py`)** — `JobDescription` with:
+- `required_skills` / `preferred_skills` (`SkillRequirement`: name, category, per-skill `min_years`)
+- `mandatory_qualifications` / `optional_qualifications` (wording preserved)
+- `responsibilities`, `technologies` (deduplicated superset of all tools + skill names)
+- `experience` (`ExperienceRequirement`: min/max years + source sentence)
+- `education` / `certifications` with per-entry `mandatory` flag
+- `work_mode` normalized to `remote | hybrid | onsite`, plus title/company/location/seniority/salary/benefits
+
+**Prompt (`llm/jd_prompts.py`)** — `JD_PARSER_SYSTEM_PROMPT` + `build_job_description_prompt()`:
+- Strict JSON-only output, anti-hallucination rules, null/[] for missing data
+- Required-vs-preferred separation rules ("must have" vs "nice to have")
+- Canonical skill naming; per-skill years only when explicitly tied to that skill
+
+**Parser (`llm/jd_parser.py`)** — `parse_job_description(text) -> JobDescription`:
+- Bedrock via `generate_completion` → `safe_json_loads` → whitelist sanitization
+- Coercions: `"5+"` → 5.0, `"required"`/`"preferred"` → bool, work-mode aliases (WFH → remote)
+- Skill normalization through the taxonomy; required wins over preferred on duplicates
+- Verified live on a sample fintech JD: skills split correctly, `min_years` per skill, hybrid detected
+
 ### 2.22 Batch Resume Parse Endpoint
 
 Added multi-file upload without changing the single-file contract:
