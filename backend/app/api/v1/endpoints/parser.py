@@ -14,7 +14,11 @@ from app.parser.exceptions import (
     UnsupportedFileTypeError,
     ValidationError,
 )
-from app.schemas.parser import ParserErrorResponse, ResumeParseResponse
+from app.schemas.parser import (
+    ParserErrorResponse,
+    ResumeBatchParseResponse,
+    ResumeParseResponse,
+)
 from app.services.resume_parser_service import ResumeParserService
 
 router = APIRouter(tags=["parser"])
@@ -25,7 +29,10 @@ def get_resume_parser_service(
     settings: Settings = Depends(get_settings),
 ) -> ResumeParserService:
     """Provide a configured resume parser service instance."""
-    return ResumeParserService(max_upload_bytes=settings.max_upload_bytes)
+    return ResumeParserService(
+        max_upload_bytes=settings.max_upload_bytes,
+        max_batch_files=settings.max_batch_files,
+    )
 
 
 def _error_response(status_code: int, detail: str, error_code: str) -> JSONResponse:
@@ -109,3 +116,60 @@ async def parse_resume(
         len(result.extracted_text),
     )
     return result
+
+
+@router.post(
+    "/resumes",
+    response_model=ResumeBatchParseResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Parse multiple uploaded resumes",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ParserErrorResponse},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": ParserErrorResponse},
+    },
+)
+async def parse_resumes(
+    files: list[UploadFile] = File(
+        ...,
+        description="One or more resume files (.pdf or .docx)",
+    ),
+    service: ResumeParserService = Depends(get_resume_parser_service),
+) -> ResumeBatchParseResponse | JSONResponse:
+    """Accept multiple multipart resume uploads and parse each independently.
+
+    Partial success is allowed: one bad file does not fail the whole batch.
+    Per-file outcomes are returned under ``results``.
+    """
+    logger.info("Received batch resume parse request file_count=%d", len(files))
+
+    try:
+        item_results = await service.parse_uploads(files)
+    except ValueError as exc:
+        logger.warning("Invalid batch resume upload: %s", exc)
+        return _error_response(
+            status.HTTP_400_BAD_REQUEST,
+            str(exc),
+            "invalid_upload",
+        )
+    except Exception:
+        logger.exception("Unhandled error during batch resume parse")
+        return _error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "An unexpected error occurred while parsing the resumes",
+            "internal_error",
+        )
+
+    succeeded = sum(1 for item in item_results if item.success)
+    response = ResumeBatchParseResponse(
+        total=len(item_results),
+        succeeded=succeeded,
+        failed=len(item_results) - succeeded,
+        results=item_results,
+    )
+    logger.info(
+        "Batch resume parse request finished total=%d succeeded=%d failed=%d",
+        response.total,
+        response.succeeded,
+        response.failed,
+    )
+    return response

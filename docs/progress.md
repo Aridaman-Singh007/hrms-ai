@@ -515,6 +515,15 @@ Acted on findings from the first real-resume evaluation run:
 
 Wired `ResumeNormalizer` into `parse_resume_with_llm` after validation. All changes verified with unit checks; no lint errors.
 
+### 2.22 Batch Resume Parse Endpoint
+
+Added multi-file upload without changing the single-file contract:
+
+- `POST /api/v1/parser/resume` — one file (unchanged)
+- `POST /api/v1/parser/resumes` — multiple files (`files` multipart field)
+- Partial success: each file returns its own success/error in `results`
+- Cap via `MAX_BATCH_FILES` (default 10)
+
 ### 2.21 Bedrock-Only LLM Stack
 
 Removed Gemini as an LLM option — Bedrock is the sole provider:

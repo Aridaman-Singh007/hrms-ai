@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # Resume upload limits
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")
+    max_batch_files: int = Field(default=10, alias="MAX_BATCH_FILES")
 
     @property
     def database_url(self) -> str:

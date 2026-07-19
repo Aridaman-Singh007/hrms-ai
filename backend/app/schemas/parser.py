@@ -1,4 +1,4 @@
-"""API schemas for the resume parsing endpoint."""
+"""API schemas for the resume parsing endpoints."""
 
 from pydantic import BaseModel, Field
 
@@ -21,3 +21,21 @@ class ParserErrorResponse(BaseModel):
 
     detail: str
     error_code: str
+
+
+class ResumeParseItemResult(BaseModel):
+    """Per-file outcome for a batch parse request."""
+
+    filename: str
+    success: bool
+    result: ResumeParseResponse | None = None
+    error: ParserErrorResponse | None = None
+
+
+class ResumeBatchParseResponse(BaseModel):
+    """Aggregate result for a multi-file resume parse request."""
+
+    total: int
+    succeeded: int
+    failed: int
+    results: list[ResumeParseItemResult]
