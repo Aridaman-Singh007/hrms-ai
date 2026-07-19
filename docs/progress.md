@@ -515,6 +515,28 @@ Acted on findings from the first real-resume evaluation run:
 
 Wired `ResumeNormalizer` into `parse_resume_with_llm` after validation. All changes verified with unit checks; no lint errors.
 
+### 2.21 Bedrock-Only LLM Stack
+
+Removed Gemini as an LLM option — Bedrock is the sole provider:
+
+- Deleted `providers/gemini.py` and `google-genai` from `requirements.txt`
+- `client.py` always uses `BedrockProvider` (no `LLM_PROVIDER` switch)
+- Settings / `.env.example`: dropped `GEMINI_*` and `LLM_PROVIDER`
+- Eval + `test_llm.py` scripts require AWS credentials only
+
+### 2.20 Resume Parse API Endpoint
+
+Production FastAPI endpoint for resume upload + parse:
+
+- `POST /api/v1/parser/resume` (multipart file upload; PDF / DOCX)
+- `schemas/parser.py`: `ResumeParseResponse` (`filename`, `extracted_text`, `parsed_profile`) + `ParserErrorResponse`
+- `services/resume_parser_service.py`: temp save → extract → `parse_resume_with_llm()` → always cleanup temp file
+- Blocking extract/LLM work runs in `asyncio.to_thread` so the event loop stays responsive
+- Structured error mapping: `415` unsupported type, `400` empty/oversized, `422` extraction/validation, `502` LLM failure, `500` unexpected
+- Dependency injection: `get_resume_parser_service` (upload size from `MAX_UPLOAD_BYTES`)
+- Settings restored for runtime providers: `LLM_PROVIDER`, AWS/Bedrock, OCR, `MAX_UPLOAD_BYTES`
+- Added `python-multipart` for file uploads; lazy provider/OCR package imports so the API can start without every optional stack
+
 ### 2.19 OCR for Scanned / Image-Only PDFs
 
 Added OCR fallback for resumes like `Snesh's_Resume.pdf` (1 page, 1 image, 0 text chars):
@@ -570,7 +592,8 @@ Planned work for upcoming phases:
 - [ ] Alembic migration scaffold
 - [ ] ORM models (`jobs`, `candidates`, `resumes`, `scores`)
 - [ ] CRUD service layer
-- [ ] JD and Resume API endpoints
+- [x] Resume parse API endpoint (`POST /api/v1/parser/resume`)
+- [ ] JD API endpoints
 - [ ] Celery + Redis async worker setup
 - [ ] Middleware (request ID, CORS, error handling)
 - [ ] Authentication (JWT)

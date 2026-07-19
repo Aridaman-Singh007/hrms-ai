@@ -17,8 +17,21 @@ class Settings(BaseSettings):
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
     postgres_db: str = Field(default="hrms_ai", alias="POSTGRES_DB")
 
-    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    # AWS Bedrock LLM
+    aws_access_key_id: str = Field(default="", alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", alias="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(default="ap-south-1", alias="AWS_REGION")
+    bedrock_model_id: str = Field(
+        default="apac.amazon.nova-lite-v1:0",
+        alias="BEDROCK_MODEL_ID",
+    )
+
+    # OCR for scanned / image-only PDFs
+    ocr_enabled: bool = Field(default=True, alias="OCR_ENABLED")
+    ocr_provider: str = Field(default="auto", alias="OCR_PROVIDER")
+
+    # Resume upload limits
+    max_upload_bytes: int = Field(default=10 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")
 
     @property
     def database_url(self) -> str:

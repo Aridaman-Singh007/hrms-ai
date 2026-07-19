@@ -1,7 +1,7 @@
 """High-level LLM client facade.
 
 Provides ``generate_completion`` as the single entry-point used by
-the resume parser.  The concrete provider is selected via ``LLM_PROVIDER``.
+the resume parser. Backed by AWS Bedrock.
 """
 
 from __future__ import annotations
@@ -11,36 +11,21 @@ from functools import lru_cache
 
 from app.core.config import get_settings
 from app.parser.llm.providers.base import LLMProvider
+from app.parser.llm.providers.bedrock import BedrockProvider
 
 logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
 def _get_provider() -> LLMProvider:
-    """Return the active LLM provider (singleton) based on settings."""
+    """Return the Bedrock LLM provider singleton."""
     settings = get_settings()
-    provider_name = settings.llm_provider.strip().lower()
-
-    if provider_name == "bedrock":
-        from app.parser.llm.providers.bedrock import BedrockProvider
-
-        logger.info("Using Bedrock LLM provider (model=%s)", settings.bedrock_model_id)
-        return BedrockProvider()
-
-    if provider_name in {"gemini", ""}:
-        from app.parser.llm.providers.gemini import GeminiProvider
-
-        logger.info("Using Gemini LLM provider (model=%s)", settings.gemini_model)
-        return GeminiProvider()
-
-    raise ValueError(
-        f"Unsupported LLM_PROVIDER '{settings.llm_provider}'. "
-        "Use 'gemini' or 'bedrock'."
-    )
+    logger.info("Using Bedrock LLM provider (model=%s)", settings.bedrock_model_id)
+    return BedrockProvider()
 
 
 def generate_completion(system_prompt: str, user_prompt: str) -> str:
-    """Generate a text completion using the configured LLM provider.
+    """Generate a text completion using Bedrock.
 
     Args:
         system_prompt: High-level instructions for the model.

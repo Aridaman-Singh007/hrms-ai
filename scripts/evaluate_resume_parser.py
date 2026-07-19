@@ -17,8 +17,8 @@ Or from backend (paths resolve to repo root):
 
     python ../scripts/evaluate_resume_parser.py --only-failed
 
-Requires LLM credentials in ``backend/.env`` (Gemini or Bedrock via
-``LLM_PROVIDER``) and sample files in ``sample_resumes/``.
+Requires AWS Bedrock credentials in ``backend/.env`` and sample files in
+``sample_resumes/``.
 """
 
 from __future__ import annotations
@@ -351,17 +351,10 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    provider = settings.llm_provider.strip().lower() or "gemini"
-    if provider == "bedrock":
-        if not settings.aws_access_key_id or not settings.aws_secret_access_key:
-            print("FAIL: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set in backend/.env")
-            return 1
-        model_label = settings.bedrock_model_id
-    else:
-        if not settings.gemini_api_key:
-            print("FAIL: GEMINI_API_KEY is not set in backend/.env")
-            return 1
-        model_label = settings.gemini_model
+    if not settings.aws_access_key_id or not settings.aws_secret_access_key:
+        print("FAIL: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set in backend/.env")
+        return 1
+    model_label = settings.bedrock_model_id
 
     _ensure_output_dirs()
     resume_files = _discover_resumes(
@@ -384,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 60)
     print(f"Samples:  {SAMPLE_RESUMES_DIR}")
     print(f"Outputs:  {OUTPUTS_DIR}")
-    print(f"Provider: {provider}")
+    print("Provider: bedrock")
     print(f"Model:    {model_label}")
     if args.only_failed:
         print("Filter:   only previously failed")
